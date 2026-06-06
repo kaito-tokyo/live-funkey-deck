@@ -1,0 +1,19 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/yamllint.json
+
+# SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
+#
+# SPDX-License-Identifier: Apache-2.0
+
+extends: default
+
+ignore: |
+  .build/
+
+rules:
+  comments:
+    min-spaces-from-content: 1
+  document-start: disable
+  line-length: disable
+  truthy:
+    check-keys: false

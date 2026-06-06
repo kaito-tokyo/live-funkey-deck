@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
+# SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Check CI
+
+# file: .github/workflows/check.yml
+# author: Kaito Udagawa <umireon@kaito.tokyo>
+# version: 1.0.0
+# date: 2026-04-25
+
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+  pull_request:
+  merge_group:
+
+permissions: {}
+
+env:
+  HOMEBREW_NO_ANALYTICS: "1"
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_ENV_HINTS: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+
+jobs:
+  check-reuse:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Print python3 and pip3 version
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        run: |
+          python3 --version
+          pip3 --version
+
+      - name: Install reuse
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        run: |
+          pip3 install --user reuse
+
+      - name: Check with reuse
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        run: reuse lint
+
+  check-swift-format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Print swift-format version
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        run: |
+          swift format --version
+
+      - name: Check with swift-format
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        run: |
+          swift format lint --recursive . --strict
+
+  check-yamllint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Print yamllint version
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        run: |
+          yamllint --version
+
+      - name: Check with yamllint
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        run: |
+          yamllint
+
+  accept-check:
+    name: Accept Check CI
+    needs:
+      - check-reuse
+      - check-swift-format
+      - check-yamllint
+    runs-on: ubuntu-slim
+    permissions: {}
+    steps:
+      - run: echo OK

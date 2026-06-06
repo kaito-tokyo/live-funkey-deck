@@ -1,5 +1,4 @@
 #!/usr/bin/env swift
-
 // SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
 //
 // SPDX-License-Identifier: Apache-2.0
@@ -55,14 +54,15 @@ for index in 1...15 {
     context.fill(bounds)
 
     // Foreground text
-    let line = CTLineCreateWithAttributedString(CFAttributedStringCreate(
-        nil,
-        label as CFString,
-        [
-            kCTFontAttributeName: font,
-            kCTForegroundColorAttributeName: fgColor,
-        ] as CFDictionary
-    )!)
+    let line = CTLineCreateWithAttributedString(
+        CFAttributedStringCreate(
+            nil,
+            label as CFString,
+            [
+                kCTFontAttributeName: font,
+                kCTForegroundColorAttributeName: fgColor,
+            ] as CFDictionary
+        )!)
     let textBounds = CTLineGetImageBounds(line, context)
     context.textMatrix = .identity
     context.textPosition = CGPoint(
@@ -70,18 +70,18 @@ for index in 1...15 {
         y: (bounds.height - textBounds.height) / 2 - textBounds.origin.y
     )
     CTLineDraw(line, context)
-    
+
     let image = context.makeImage()!
 
     // Rotate 180
     let rotateContext = makeContext()
-    
+
     rotateContext.translateBy(x: bounds.width, y: bounds.height)
     rotateContext.rotate(by: .pi)
     rotateContext.draw(image, in: bounds)
-    
+
     let rotatedImage = rotateContext.makeImage()!
-    
+
     // Output JPEG
     let destination = CGImageDestinationCreateWithURL(
         fileURL as CFURL,
@@ -89,19 +89,20 @@ for index in 1...15 {
         1,
         nil
     )!
-    
-    CGImageDestinationAddImage(destination, rotatedImage, [
-        kCGImageDestinationLossyCompressionQuality: 0.8,
-        kCGImagePropertyJFIFIsProgressive: false
-    ] as CFDictionary)
-    
+
+    CGImageDestinationAddImage(
+        destination, rotatedImage,
+        [
+            kCGImageDestinationLossyCompressionQuality: 0.8,
+            kCGImagePropertyJFIFIsProgressive: false,
+        ] as CFDictionary)
+
     guard CGImageDestinationFinalize(destination) else {
         fatalError("Failed to create \(fileURL.path(percentEncoded: false))")
     }
 
     print("Generated: \(fileURL.path(percentEncoded: false))")
 }
-
 
 let unknownLicenseText = """
     Embedded font license is unknown.

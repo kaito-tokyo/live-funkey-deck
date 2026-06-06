@@ -1,15 +1,28 @@
+// SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
+//
+// SPDX-License-Identifier: Apache-2.0
+
+//
+// Sources/LiveFunkeyDeck/main.swift
+// LiveFunkeyDeck
+//
+// Version: 1.0.0
+// Date: 2026-06-06
+//
+
 import ApplicationServices
 import Dispatch
 import Foundation
-import ImageIO
 import IOKit.hid
+import ImageIO
 import UniformTypeIdentifiers
 
 let elgatoVendorID = 0x0FD9
 let keyCount = 15
 let shortcutFolderName = "Live Funkey Deck"
 let iconExtractorShortcutName = "tokyo.kaito.live-funkey-deck.extract-icons"
-let shortcutIconsDirectory = "Library/Application Support/tokyo.kaito.live-funkey-deck/ShortcutIcons"
+let shortcutIconsDirectory =
+    "Library/Application Support/tokyo.kaito.live-funkey-deck/ShortcutIcons"
 
 struct StreamDeckModel: Sendable {
     let name: String
@@ -35,13 +48,13 @@ enum LiveFunkeyDeckError: Error, CustomStringConvertible {
         switch self {
         case .noSupportedDevice:
             "No supported Stream Deck device was found. Quit the official Stream Deck app if it has the device open."
-        case let .openFailed(code):
+        case .openFailed(let code):
             "Failed to open HID device: IOReturn \(code)"
-        case let .reportFailed(operation, code):
+        case .reportFailed(let operation, let code):
             "\(operation) failed: IOReturn \(code)"
-        case let .invalidArgument(message):
+        case .invalidArgument(let message):
             message
-        case let .imageLoadFailed(label):
+        case .imageLoadFailed(let label):
             "Could not load image for \(label)"
         }
     }
@@ -67,7 +80,7 @@ let functionKeys: [FunctionKey] = [
     FunctionKey(label: "F12", keyCode: 111),
     FunctionKey(label: "F13", keyCode: 105),
     FunctionKey(label: "F14", keyCode: 107),
-    FunctionKey(label: "F15", keyCode: 113)
+    FunctionKey(label: "F15", keyCode: 113),
 ]
 
 do {
@@ -99,14 +112,15 @@ func run(_ arguments: [String]) throws {
 }
 
 func printUsage() {
-    print("""
-    Usage:
-      LiveFunkeyDeck
+    print(
+        """
+        Usage:
+          LiveFunkeyDeck
 
-    Paints a 15-button Stream Deck as F1-F15 and maps button presses to Shortcuts or macOS function-key events.
-    Press Control-C to stop.
-    Use --license to print bundled asset license information.
-    """)
+        Paints a 15-button Stream Deck as F1-F15 and maps button presses to Shortcuts or macOS function-key events.
+        Press Control-C to stop.
+        Use --license to print bundled asset license information.
+        """)
 }
 
 func runFunctionKeyMode(device: StreamDeckDevice) throws {
@@ -125,19 +139,25 @@ func runFunctionKeyMode(device: StreamDeckDevice) throws {
 
     for (index, functionKey) in functionKeys.enumerated() {
         let shortcutImageData = shortcutsByKeyLabel[functionKey.label]?.iconJPEGData
-        try device.setKeyImage(index: index, jpegData: shortcutImageData ?? fKeyJPEGData(label: functionKey.label))
+        try device.setKeyImage(
+            index: index, jpegData: shortcutImageData ?? fKeyJPEGData(label: functionKey.label))
     }
 
     let keyboardActionCount = actions.filter(\.usesKeyboard).count
     let shortcutActionCount = actions.count - keyboardActionCount
-    print("Enabled \(shortcutActionCount) Shortcuts and \(keyboardActionCount) function-key fallbacks.")
+    print(
+        "Enabled \(shortcutActionCount) Shortcuts and \(keyboardActionCount) function-key fallbacks."
+    )
 
     let synthesizer = KeyboardSynthesizer()
     if keyboardActionCount > 0 && !synthesizer.isTrustedForAccessibility {
-        print("Accessibility permission may be required before macOS accepts fallback function-key events.")
+        print(
+            "Accessibility permission may be required before macOS accepts fallback function-key events."
+        )
     }
 
-    let state = FunctionKeyModeState(actions: actions, shortcutRunner: shortcutRunner, synthesizer: synthesizer)
+    let state = FunctionKeyModeState(
+        actions: actions, shortcutRunner: shortcutRunner, synthesizer: synthesizer)
     installSignalHandlers()
     print("LiveFunkeyDeck is running. Press Control-C to stop.")
     device.listen { states in
@@ -210,7 +230,7 @@ final class StreamDeckDevice {
         let matches = supportedModels.map { model -> [String: Any] in
             [
                 kIOHIDVendorIDKey as String: elgatoVendorID,
-                kIOHIDProductIDKey as String: model.productID
+                kIOHIDProductIDKey as String: model.productID,
             ]
         }
         IOHIDManagerSetDeviceMatchingMultiple(manager, matches as CFArray)
@@ -246,7 +266,8 @@ final class StreamDeckDevice {
 
     func setKeyImage(index: Int, jpegData: Data) throws {
         guard (0..<model.keyCount).contains(index) else {
-            throw LiveFunkeyDeckError.invalidArgument("Key index must be between 0 and \(model.keyCount - 1).")
+            throw LiveFunkeyDeckError.invalidArgument(
+                "Key index must be between 0 and \(model.keyCount - 1).")
         }
         try sendChunkedImage(command: 0x07, target: UInt8(index), jpegData: jpegData)
     }
@@ -259,19 +280,26 @@ final class StreamDeckDevice {
         let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 512)
         buffer.initialize(repeating: 0, count: 512)
 
-        let context = InputCallbackContext(keyCount: model.keyCount, handler: handler, buffer: buffer)
+        let context = InputCallbackContext(
+            keyCount: model.keyCount, handler: handler, buffer: buffer)
         let opaqueContext = Unmanaged.passRetained(context).toOpaque()
 
-        IOHIDDeviceRegisterInputReportCallback(device, buffer, 512, { context, _, _, _, _, report, reportLength in
-            guard let context else { return }
-            let callbackContext = Unmanaged<InputCallbackContext>.fromOpaque(context).takeUnretainedValue()
-            guard reportLength >= 4, report[0] == 0x01, report[1] == 0x00 else { return }
-            let payloadLength = min(Int(report[2]) | (Int(report[3]) << 8), reportLength - 4)
-            let states = (0..<min(payloadLength, callbackContext.keyCount)).map { report[4 + $0] != 0 }
-            callbackContext.handler(states)
-        }, opaqueContext)
+        IOHIDDeviceRegisterInputReportCallback(
+            device, buffer, 512,
+            { context, _, _, _, _, report, reportLength in
+                guard let context else { return }
+                let callbackContext = Unmanaged<InputCallbackContext>.fromOpaque(context)
+                    .takeUnretainedValue()
+                guard reportLength >= 4, report[0] == 0x01, report[1] == 0x00 else { return }
+                let payloadLength = min(Int(report[2]) | (Int(report[3]) << 8), reportLength - 4)
+                let states = (0..<min(payloadLength, callbackContext.keyCount)).map {
+                    report[4 + $0] != 0
+                }
+                callbackContext.handler(states)
+            }, opaqueContext)
 
-        IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+        IOHIDDeviceScheduleWithRunLoop(
+            device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
     }
 
     private func sendChunkedImage(command: UInt8, target: UInt8, jpegData: Data) throws {
@@ -305,7 +333,8 @@ final class StreamDeckDevice {
                 )
             }
             guard result == kIOReturnSuccess else {
-                throw LiveFunkeyDeckError.reportFailed(operation: "Send image chunk \(chunkIndex)", result)
+                throw LiveFunkeyDeckError.reportFailed(
+                    operation: "Send image chunk \(chunkIndex)", result)
             }
         }
     }
@@ -326,7 +355,8 @@ final class StreamDeckDevice {
             )
         }
         guard result == kIOReturnSuccess else {
-            throw LiveFunkeyDeckError.reportFailed(operation: "Send feature report 0x\(String(command, radix: 16))", result)
+            throw LiveFunkeyDeckError.reportFailed(
+                operation: "Send feature report 0x\(String(command, radix: 16))", result)
         }
     }
 }
@@ -336,7 +366,10 @@ final class InputCallbackContext: @unchecked Sendable {
     let handler: @Sendable ([Bool]) -> Void
     let buffer: UnsafeMutablePointer<UInt8>
 
-    init(keyCount: Int, handler: @escaping @Sendable ([Bool]) -> Void, buffer: UnsafeMutablePointer<UInt8>) {
+    init(
+        keyCount: Int, handler: @escaping @Sendable ([Bool]) -> Void,
+        buffer: UnsafeMutablePointer<UInt8>
+    ) {
         self.keyCount = keyCount
         self.handler = handler
         self.buffer = buffer
@@ -419,16 +452,20 @@ final class ShortcutRunner: @unchecked Sendable {
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
             let data = errors.fileHandleForReading.readDataToEndOfFile()
-            let message = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            let message = String(decoding: data, as: UTF8.self).trimmingCharacters(
+                in: .whitespacesAndNewlines)
             if message.isEmpty {
-                fputs("Could not list Shortcuts: shortcuts exited with status \(process.terminationStatus)\n", stderr)
+                fputs(
+                    "Could not list Shortcuts: shortcuts exited with status \(process.terminationStatus)\n",
+                    stderr)
             } else {
                 fputs("Could not list Shortcuts: \(message)\n", stderr)
             }
             return [:]
         }
 
-        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let text = String(
+            decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         return shortcutEntriesByKeyLabel(in: text)
     }
 
@@ -450,9 +487,12 @@ final class ShortcutRunner: @unchecked Sendable {
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
             let data = errors.fileHandleForReading.readDataToEndOfFile()
-            let message = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            let message = String(decoding: data, as: UTF8.self).trimmingCharacters(
+                in: .whitespacesAndNewlines)
             if message.isEmpty {
-                fputs("Icon extractor Shortcut exited with status \(process.terminationStatus)\n", stderr)
+                fputs(
+                    "Icon extractor Shortcut exited with status \(process.terminationStatus)\n",
+                    stderr)
             } else {
                 fputs("Icon extractor Shortcut failed: \(message)\n", stderr)
             }
@@ -469,7 +509,9 @@ final class ShortcutRunner: @unchecked Sendable {
                 try process.run()
                 process.waitUntilExit()
                 if process.terminationStatus != 0 {
-                    fputs("Shortcut \(identifier) exited with status \(process.terminationStatus)\n", stderr)
+                    fputs(
+                        "Shortcut \(identifier) exited with status \(process.terminationStatus)\n",
+                        stderr)
                 }
             } catch {
                 fputs("Could not run Shortcut \(identifier): \(error)\n", stderr)
@@ -529,18 +571,22 @@ func makeStreamDeckImageContext(bounds: CGRect) -> CGContext? {
 
 func jpegData(from image: CGImage) -> Data? {
     let data = NSMutableData()
-    guard let destination = CGImageDestinationCreateWithData(
-        data,
-        UTType.jpeg.identifier as CFString,
-        1,
-        nil
-    ) else {
+    guard
+        let destination = CGImageDestinationCreateWithData(
+            data,
+            UTType.jpeg.identifier as CFString,
+            1,
+            nil
+        )
+    else {
         return nil
     }
-    CGImageDestinationAddImage(destination, image, [
-        kCGImageDestinationLossyCompressionQuality: 0.8,
-        kCGImagePropertyJFIFIsProgressive: false
-    ] as CFDictionary)
+    CGImageDestinationAddImage(
+        destination, image,
+        [
+            kCGImageDestinationLossyCompressionQuality: 0.8,
+            kCGImagePropertyJFIFIsProgressive: false,
+        ] as CFDictionary)
     guard CGImageDestinationFinalize(destination) else {
         return nil
     }
@@ -583,7 +629,10 @@ final class FunctionKeyModeState: @unchecked Sendable {
     private let synthesizer: KeyboardSynthesizer
     private var previousStates = [Bool](repeating: false, count: keyCount)
 
-    init(actions: [FunctionKeyAction], shortcutRunner: ShortcutRunner, synthesizer: KeyboardSynthesizer) {
+    init(
+        actions: [FunctionKeyAction], shortcutRunner: ShortcutRunner,
+        synthesizer: KeyboardSynthesizer
+    ) {
         self.actions = actions
         self.shortcutRunner = shortcutRunner
         self.synthesizer = synthesizer
@@ -604,7 +653,7 @@ final class FunctionKeyModeState: @unchecked Sendable {
         for index in functionKeys.indices where previousStates[index] {
             let functionKey = functionKeys[index]
             fputs("\(functionKey.label) up\n", stderr)
-            if case let .keyboard(keyCode) = actions[index] {
+            if case .keyboard(let keyCode) = actions[index] {
                 synthesizer.post(keyCode: keyCode, isDown: false)
             }
         }
@@ -613,11 +662,11 @@ final class FunctionKeyModeState: @unchecked Sendable {
 
     private func handle(action: FunctionKeyAction, isDown: Bool) {
         switch action {
-        case let .shortcut(_, identifier):
+        case .shortcut(_, let identifier):
             if isDown {
                 shortcutRunner.run(identifier: identifier)
             }
-        case let .keyboard(keyCode):
+        case .keyboard(let keyCode):
             synthesizer.post(keyCode: keyCode, isDown: isDown)
         }
     }
