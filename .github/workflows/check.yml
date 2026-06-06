@@ -93,7 +93,7 @@ jobs:
       - name: Check with yamllint
         shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
         run: |
-          yamllint
+          yamllint .
 
   accept-check:
     name: Accept Check CI
