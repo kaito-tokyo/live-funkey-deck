@@ -3,555 +3,176 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //
-// Sources/LiveFunkeyDeck/main.swift
-// LiveFunkeyDeck
+//  Sources/LiveFunkeyDeck/main.swift
+//  LiveFunkeyDeck
 //
-// Version: 1.0.0
-// Date: 2026-06-06
+//  Version: 1.0.0
+//  Date: 2026-06-06
 //
 
 import ApplicationServices
-import Dispatch
 import Foundation
 import IOKit.hid
 import ImageIO
 import UniformTypeIdentifiers
+import os
 
-let elgatoVendorID = 0x0FD9
-let keyCount = 15
-let shortcutFolderName = "Live Funkey Deck"
-let iconExtractorShortcutName = "tokyo.kaito.live-funkey-deck.extract-icons"
-let shortcutIconsDirectory =
-    "Library/Application Support/tokyo.kaito.live-funkey-deck/ShortcutIcons"
+private let kVersion = "0.1.0"
+private let kUsage = """
+    live-funkey-deck: Small function key provider for Stream Deck
+    Usage: live-funkey-deck
+      --shortcut-folder=NAME  Shortcut folder name to use. Default to live-funkey-deck.
+      --serial-number=STRING  Serial number to select device. Optional when single device connected.
+    """
 
-struct StreamDeckModel: Sendable {
-    let name: String
-    let productID: Int
-    let columns = 5
-    let rows = 3
+private let kDataDir = URL.applicationSupportDirectory.appending(
+    path: "tokyo.kaito.live-funkey-deck",
+    directoryHint: .isDirectory
+)
+private let kExtractIconShortcutName = "tokyo.kaito.live-funkey-deck.extract-icons"
 
-    var keyCount: Int { columns * rows }
-}
-
-let supportedModels = [
-    StreamDeckModel(name: "Stream Deck Mk.2", productID: 0x0080)
-]
-
-enum LiveFunkeyDeckError: Error, CustomStringConvertible {
-    case noSupportedDevice
-    case openFailed(Int32)
-    case reportFailed(operation: String, Int32)
-    case invalidArgument(String)
-    case imageLoadFailed(String)
-
-    var description: String {
-        switch self {
-        case .noSupportedDevice:
-            "No supported Stream Deck device was found. Quit the official Stream Deck app if it has the device open."
-        case .openFailed(let code):
-            "Failed to open HID device: IOReturn \(code)"
-        case .reportFailed(let operation, let code):
-            "\(operation) failed: IOReturn \(code)"
-        case .invalidArgument(let message):
-            message
-        case .imageLoadFailed(let label):
-            "Could not load image for \(label)"
-        }
+func writeError(_ string: String) {
+    let handled: Void? = string.utf8.withContiguousStorageIfAvailable { buffer in
+        _ = try? FileHandle.standardError.write(contentsOf: UnsafeRawBufferPointer(buffer))
+    }
+    if handled == nil, let data = string.data(using: .utf8) {
+        try? FileHandle.standardError.write(contentsOf: data)
     }
 }
 
-struct FunctionKey: Sendable {
-    let label: String
-    let keyCode: CGKeyCode
-}
+private func parseArgs(_ args: ArraySlice<String>) -> (
+    opts: [String: String], flags: Set<String>, posArgs: [String]
+) {
+    var opts: [String: String] = [:]
+    var flags = Set<String>()
+    var posArgs: [String] = []
+    var tail = args
 
-let functionKeys: [FunctionKey] = [
-    FunctionKey(label: "F1", keyCode: 122),
-    FunctionKey(label: "F2", keyCode: 120),
-    FunctionKey(label: "F3", keyCode: 99),
-    FunctionKey(label: "F4", keyCode: 118),
-    FunctionKey(label: "F5", keyCode: 96),
-    FunctionKey(label: "F6", keyCode: 97),
-    FunctionKey(label: "F7", keyCode: 98),
-    FunctionKey(label: "F8", keyCode: 100),
-    FunctionKey(label: "F9", keyCode: 101),
-    FunctionKey(label: "F10", keyCode: 109),
-    FunctionKey(label: "F11", keyCode: 103),
-    FunctionKey(label: "F12", keyCode: 111),
-    FunctionKey(label: "F13", keyCode: 105),
-    FunctionKey(label: "F14", keyCode: 107),
-    FunctionKey(label: "F15", keyCode: 113),
-]
-
-do {
-    try run(Array(CommandLine.arguments.dropFirst()))
-} catch {
-    fputs("LiveFunkeyDeck: \(error)\n", stderr)
-    Foundation.exit(1)
-}
-
-func run(_ arguments: [String]) throws {
-    if arguments == ["--help"] || arguments == ["-h"] {
-        printUsage()
-        return
-    }
-    if arguments == ["--license"] || arguments == ["--licenses"] {
-        print(String(decoding: PackageResources.font_license_txt, as: UTF8.self))
-        return
-    }
-
-    guard arguments.isEmpty else {
-        throw LiveFunkeyDeckError.invalidArgument("Usage: LiveFunkeyDeck")
-    }
-
-    let device = try StreamDeckDevice.first()
-    try device.open()
-    defer { device.close() }
-
-    try runFunctionKeyMode(device: device)
-}
-
-func printUsage() {
-    print(
-        """
-        Usage:
-          LiveFunkeyDeck
-
-        Paints a 15-button Stream Deck as F1-F15 and maps button presses to Shortcuts or macOS function-key events.
-        Press Control-C to stop.
-        Use --license to print bundled asset license information.
-        """)
-}
-
-func runFunctionKeyMode(device: StreamDeckDevice) throws {
-    guard device.model.keyCount == functionKeys.count else {
-        throw LiveFunkeyDeckError.invalidArgument("This command requires a 15-button Stream Deck.")
-    }
-
-    let shortcutRunner = ShortcutRunner()
-    let shortcutsByKeyLabel = shortcutRunner.availableShortcutsByKeyLabel()
-    let actions = functionKeys.map { functionKey -> FunctionKeyAction in
-        if let shortcut = shortcutsByKeyLabel[functionKey.label] {
-            return .shortcut(keyLabel: functionKey.label, identifier: shortcut.identifier)
-        }
-        return .keyboard(keyCode: functionKey.keyCode)
-    }
-
-    for (index, functionKey) in functionKeys.enumerated() {
-        let shortcutImageData = shortcutsByKeyLabel[functionKey.label]?.iconJPEGData
-        try device.setKeyImage(
-            index: index, jpegData: shortcutImageData ?? fKeyJPEGData(label: functionKey.label))
-    }
-
-    let keyboardActionCount = actions.filter(\.usesKeyboard).count
-    let shortcutActionCount = actions.count - keyboardActionCount
-    print(
-        "Enabled \(shortcutActionCount) Shortcuts and \(keyboardActionCount) function-key fallbacks."
-    )
-
-    let synthesizer = KeyboardSynthesizer()
-    if keyboardActionCount > 0 && !synthesizer.isTrustedForAccessibility {
-        print(
-            "Accessibility permission may be required before macOS accepts fallback function-key events."
-        )
-    }
-
-    let state = FunctionKeyModeState(
-        actions: actions, shortcutRunner: shortcutRunner, synthesizer: synthesizer)
-    installSignalHandlers()
-    print("LiveFunkeyDeck is running. Press Control-C to stop.")
-    device.listen { states in
-        state.handle(states)
-    }
-    CFRunLoopRun()
-    state.releaseAll()
-    showLogo(device: device)
-}
-
-func fKeyJPEGData(label: String) throws -> Data {
-    guard label.first == "F", let index = Int(label.dropFirst()) else {
-        throw LiveFunkeyDeckError.imageLoadFailed(label)
-    }
-    return try Data(fKeyJPEGBytes(index: index))
-}
-
-func fKeyJPEGBytes(index: Int) throws -> [UInt8] {
-    switch index {
-    case 1: PackageResources.f1_jpg
-    case 2: PackageResources.f2_jpg
-    case 3: PackageResources.f3_jpg
-    case 4: PackageResources.f4_jpg
-    case 5: PackageResources.f5_jpg
-    case 6: PackageResources.f6_jpg
-    case 7: PackageResources.f7_jpg
-    case 8: PackageResources.f8_jpg
-    case 9: PackageResources.f9_jpg
-    case 10: PackageResources.f10_jpg
-    case 11: PackageResources.f11_jpg
-    case 12: PackageResources.f12_jpg
-    case 13: PackageResources.f13_jpg
-    case 14: PackageResources.f14_jpg
-    case 15: PackageResources.f15_jpg
-    default: throw LiveFunkeyDeckError.imageLoadFailed("F\(index)")
-    }
-}
-
-func showLogo(device: StreamDeckDevice) {
-    do {
-        try device.showLogo()
-    } catch {
-        fputs("Could not show Stream Deck logo: \(error)\n", stderr)
-    }
-}
-
-func installSignalHandlers() {
-    signal(SIGINT) { _ in CFRunLoopStop(CFRunLoopGetMain()) }
-    signal(SIGTERM) { _ in CFRunLoopStop(CFRunLoopGetMain()) }
-}
-
-final class StreamDeckDevice {
-    let model: StreamDeckModel
-    private let device: IOHIDDevice
-
-    init(device: IOHIDDevice, model: StreamDeckModel) {
-        self.device = device
-        self.model = model
-    }
-
-    static func first() throws -> StreamDeckDevice {
-        guard let device = all().first else {
-            throw LiveFunkeyDeckError.noSupportedDevice
-        }
-        return device
-    }
-
-    static func all() -> [StreamDeckDevice] {
-        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
-        let matches = supportedModels.map { model -> [String: Any] in
-            [
-                kIOHIDVendorIDKey as String: elgatoVendorID,
-                kIOHIDProductIDKey as String: model.productID,
-            ]
-        }
-        IOHIDManagerSetDeviceMatchingMultiple(manager, matches as CFArray)
-        IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
-        defer { IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone)) }
-
-        guard let deviceSet = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> else {
-            return []
-        }
-
-        return deviceSet.compactMap { device in
-            guard
-                let productID = intProperty(device, kIOHIDProductIDKey as String),
-                let model = supportedModels.first(where: { $0.productID == productID })
-            else {
-                return nil
-            }
-            return StreamDeckDevice(device: device, model: model)
-        }
-        .sorted { $0.model.productID < $1.model.productID }
-    }
-
-    func open() throws {
-        let result = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
-        guard result == kIOReturnSuccess else {
-            throw LiveFunkeyDeckError.openFailed(result)
-        }
-    }
-
-    func close() {
-        IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
-    }
-
-    func setKeyImage(index: Int, jpegData: Data) throws {
-        guard (0..<model.keyCount).contains(index) else {
-            throw LiveFunkeyDeckError.invalidArgument(
-                "Key index must be between 0 and \(model.keyCount - 1).")
-        }
-        try sendChunkedImage(command: 0x07, target: UInt8(index), jpegData: jpegData)
-    }
-
-    func showLogo() throws {
-        try sendFeatureReport(command: 0x02)
-    }
-
-    func listen(handler: @escaping @Sendable ([Bool]) -> Void) {
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 512)
-        buffer.initialize(repeating: 0, count: 512)
-
-        let context = InputCallbackContext(
-            keyCount: model.keyCount, handler: handler, buffer: buffer)
-        let opaqueContext = Unmanaged.passRetained(context).toOpaque()
-
-        IOHIDDeviceRegisterInputReportCallback(
-            device, buffer, 512,
-            { context, _, _, _, _, report, reportLength in
-                guard let context else { return }
-                let callbackContext = Unmanaged<InputCallbackContext>.fromOpaque(context)
-                    .takeUnretainedValue()
-                guard reportLength >= 4, report[0] == 0x01, report[1] == 0x00 else { return }
-                let payloadLength = min(Int(report[2]) | (Int(report[3]) << 8), reportLength - 4)
-                let states = (0..<min(payloadLength, callbackContext.keyCount)).map {
-                    report[4 + $0] != 0
-                }
-                callbackContext.handler(states)
-            }, opaqueContext)
-
-        IOHIDDeviceScheduleWithRunLoop(
-            device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
-    }
-
-    private func sendChunkedImage(command: UInt8, target: UInt8, jpegData: Data) throws {
-        let maxReportSize = 1024
-        let headerSize = 8
-        let chunkSize = maxReportSize - headerSize
-        let totalChunks = max(1, Int(ceil(Double(jpegData.count) / Double(chunkSize))))
-
-        for chunkIndex in 0..<totalChunks {
-            let start = chunkIndex * chunkSize
-            let end = min(start + chunkSize, jpegData.count)
-            let chunk = jpegData[start..<end]
-            var report = [UInt8](repeating: 0, count: maxReportSize)
-
-            report[0] = 0x02
-            report[1] = command
-            report[2] = target
-            report[3] = chunkIndex == totalChunks - 1 ? 0x01 : 0x00
-            writeUInt16LE(UInt16(chunk.count), into: &report, at: 4)
-            writeUInt16LE(UInt16(chunkIndex), into: &report, at: 6)
-            report.replaceSubrange(headerSize..<(headerSize + chunk.count), with: chunk)
-            let reportCount = report.count
-
-            let result = report.withUnsafeMutableBytes { rawBuffer in
-                IOHIDDeviceSetReport(
-                    device,
-                    kIOHIDReportTypeOutput,
-                    0x02,
-                    rawBuffer.bindMemory(to: UInt8.self).baseAddress!,
-                    reportCount
-                )
-            }
-            guard result == kIOReturnSuccess else {
-                throw LiveFunkeyDeckError.reportFailed(
-                    operation: "Send image chunk \(chunkIndex)", result)
-            }
-        }
-    }
-
-    private func sendFeatureReport(command: UInt8) throws {
-        var report = [UInt8](repeating: 0, count: 32)
-        report[0] = 0x03
-        report[1] = command
-        let reportCount = report.count
-
-        let result = report.withUnsafeMutableBytes { rawBuffer in
-            IOHIDDeviceSetReport(
-                device,
-                kIOHIDReportTypeFeature,
-                0x03,
-                rawBuffer.bindMemory(to: UInt8.self).baseAddress!,
-                reportCount
-            )
-        }
-        guard result == kIOReturnSuccess else {
-            throw LiveFunkeyDeckError.reportFailed(
-                operation: "Send feature report 0x\(String(command, radix: 16))", result)
-        }
-    }
-}
-
-final class InputCallbackContext: @unchecked Sendable {
-    let keyCount: Int
-    let handler: @Sendable ([Bool]) -> Void
-    let buffer: UnsafeMutablePointer<UInt8>
-
-    init(
-        keyCount: Int, handler: @escaping @Sendable ([Bool]) -> Void,
-        buffer: UnsafeMutablePointer<UInt8>
-    ) {
-        self.keyCount = keyCount
-        self.handler = handler
-        self.buffer = buffer
-    }
-
-    deinit {
-        buffer.deallocate()
-    }
-}
-
-final class KeyboardSynthesizer: @unchecked Sendable {
-    private let source = CGEventSource(stateID: .hidSystemState)
-
-    var isTrustedForAccessibility: Bool {
-        AXIsProcessTrusted()
-    }
-
-    func post(keyCode: CGKeyCode, isDown: Bool) {
-        CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: isDown)?
-            .post(tap: .cghidEventTap)
-    }
-}
-
-enum FunctionKeyAction: Sendable {
-    case shortcut(keyLabel: String, identifier: String)
-    case keyboard(keyCode: CGKeyCode)
-
-    var usesKeyboard: Bool {
-        switch self {
-        case .keyboard: true
-        case .shortcut: false
-        }
-    }
-}
-
-struct ShortcutDefinition: Sendable {
-    let name: String
-    let identifier: String
-    let iconJPEGData: Data?
-}
-
-struct ShortcutListEntry: Sendable {
-    let keyLabel: String
-    let name: String
-    let identifier: String
-}
-
-final class ShortcutRunner: @unchecked Sendable {
-    private let executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
-
-    func availableShortcutsByKeyLabel() -> [String: ShortcutDefinition] {
-        runIconExtractor()
-        let entriesByKeyLabel = availableEntriesByKeyLabel()
-        return entriesByKeyLabel.mapValues { entry in
-            ShortcutDefinition(
-                name: entry.name,
-                identifier: entry.identifier,
-                iconJPEGData: shortcutIconJPEGData(forShortcutName: entry.name)
-            )
-        }
-    }
-
-    private func availableEntriesByKeyLabel() -> [String: ShortcutListEntry] {
-        let process = Process()
-        process.executableURL = executableURL
-        process.arguments = ["list", "--folder-name", shortcutFolderName, "--show-identifiers"]
-
-        let output = Pipe()
-        let errors = Pipe()
-        process.standardOutput = output
-        process.standardError = errors
-
-        do {
-            try process.run()
-        } catch {
-            fputs("Could not list Shortcuts: \(error)\n", stderr)
-            return [:]
-        }
-
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            let data = errors.fileHandleForReading.readDataToEndOfFile()
-            let message = String(decoding: data, as: UTF8.self).trimmingCharacters(
-                in: .whitespacesAndNewlines)
-            if message.isEmpty {
-                fputs(
-                    "Could not list Shortcuts: shortcuts exited with status \(process.terminationStatus)\n",
-                    stderr)
+    while let arg = tail.popFirst() {
+        if arg == "--" {
+            posArgs.append(contentsOf: tail)
+            break
+        } else if let match = arg.wholeMatch(of: /(--[^=]+)=(.*)/) {
+            opts[String(match.output.1)] = String(match.output.2)
+        } else if arg.hasPrefix("--") {
+            if tail.first?.hasPrefix("--") == false {
+                opts[arg] = tail.popFirst()
             } else {
-                fputs("Could not list Shortcuts: \(message)\n", stderr)
+                flags.insert(arg)
             }
-            return [:]
+        } else {
+            posArgs.append(arg)
         }
-
-        let text = String(
-            decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        return shortcutEntriesByKeyLabel(in: text)
     }
 
-    private func runIconExtractor() {
-        let process = Process()
-        process.executableURL = executableURL
-        process.arguments = ["run", iconExtractorShortcutName]
+    return (opts, flags, posArgs)
+}
 
-        let errors = Pipe()
-        process.standardError = errors
+var (opts, flags, posArgs) = parseArgs(CommandLine.arguments.dropFirst())
 
-        do {
-            try process.run()
-        } catch {
-            fputs("Could not run icon extractor Shortcut: \(error)\n", stderr)
-            return
-        }
+if flags.remove("--help") != nil {
+    print(kUsage)
+    exit(EX_OK)
+} else if flags.remove("--version") != nil {
+    print("live-funkey-deck \(kVersion)")
+    exit(EX_OK)
+} else if flags.remove("--licenses") != nil {
+    print("## Font license")
+    print(PackageResources.font_license_txt)
+    exit(EX_OK)
+}
 
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            let data = errors.fileHandleForReading.readDataToEndOfFile()
-            let message = String(decoding: data, as: UTF8.self).trimmingCharacters(
-                in: .whitespacesAndNewlines)
-            if message.isEmpty {
-                fputs(
-                    "Icon extractor Shortcut exited with status \(process.terminationStatus)\n",
-                    stderr)
+let shortcutFolder = opts.removeValue(forKey: "--shortcut-folder") ?? "live-funkey-deck"
+let serialNumber = opts.removeValue(forKey: "--serial-number")
+
+guard opts.isEmpty && flags.isEmpty && posArgs.isEmpty else {
+    writeError("ERROR: Unrecognized option(s) found.\n\(kUsage)\n")
+    exit(EX_USAGE)
+}
+
+let manager = IOHIDManagerCreate(nil, 0)
+IOHIDManagerSetDeviceMatchingMultiple(
+    manager,
+    DeviceRegistry.knownModels.map { $0.devicePredicate } as CFArray
+)
+IOHIDManagerOpen(manager, 0)
+defer { IOHIDManagerClose(manager, 0) }
+
+guard let deviceSet = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> else {
+    writeError("ERROR: No device found. Exiting...\n")
+    exit(EX_USAGE)
+}
+
+let detectedDevices = deviceSet.compactMap { device -> (IOHIDDevice, any DeviceModel)? in
+    guard let deviceModel = DeviceRegistry.knownModels.first(where: { $0.matches(device: device) })
+    else {
+        return nil
+    }
+
+    return (device, deviceModel)
+}
+
+func printDetectedDevices(detectedDevices: [(IOHIDDevice, any DeviceModel)]) {
+    for (device, deviceModel) in detectedDevices {
+        switch deviceModel {
+        case let deviceModel as BaseStreamDeckModel:
+            if let deviceSerialNumber = deviceModel.getUnitSerialNumber(device: device) {
+                print("- \(deviceModel.name): \(deviceSerialNumber)")
             } else {
-                fputs("Icon extractor Shortcut failed: \(message)\n", stderr)
+                print("- \(deviceModel.name): no serial number")
             }
-            return
-        }
-    }
-
-    func run(identifier: String) {
-        DispatchQueue.global(qos: .userInitiated).async { [executableURL] in
-            let process = Process()
-            process.executableURL = executableURL
-            process.arguments = ["run", identifier]
-            do {
-                try process.run()
-                process.waitUntilExit()
-                if process.terminationStatus != 0 {
-                    fputs(
-                        "Shortcut \(identifier) exited with status \(process.terminationStatus)\n",
-                        stderr)
-                }
-            } catch {
-                fputs("Could not run Shortcut \(identifier): \(error)\n", stderr)
-            }
+        default: print("- unknown device: no serial number")
         }
     }
 }
 
-func shortcutIconJPEGData(forShortcutName shortcutName: String) -> Data? {
-    let iconURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(shortcutIconsDirectory, isDirectory: true)
-        .appendingPathComponent("\(shortcutName).png", isDirectory: false)
+let device: IOHIDDevice
+let deviceModel: any DeviceModel
+if detectedDevices.count == 0 {
+    writeError("ERROR: No device detected. Exiting...\n")
+    exit(EX_USAGE)
+} else if let serialNumber {
+    let detected = detectedDevices.first { (device, deviceModel) in
+        deviceModel.getSerialNumber(device: device) == serialNumber
+    }
+
+    guard let (detectedDevice, detectedDeviceModel) = detected else {
+        writeError("ERROR: No device matched with provided serial number. Exiting\n\(kUsage)\n")
+        printDetectedDevices(detectedDevices: detectedDevices)
+        exit(EX_CONFIG)
+    }
+
+    device = detectedDevice
+    deviceModel = detectedDeviceModel
+} else if detectedDevices.count == 1,
+    let (detectedDevice, detectedDeviceModel) = detectedDevices.first
+{
+    device = detectedDevice
+    deviceModel = detectedDeviceModel
+} else {
+    writeError("ERROR: Multiple devices detected. Specify one with --serial-number.\n\(kUsage)\n")
+    printDetectedDevices(detectedDevices: detectedDevices)
+    exit(EX_USAGE)
+}
+
+extension UnsafeMutableBufferPointer where Element == UInt8 {
+    func storeLE(uint16: UInt16, at index: Self.Index) {
+        Swift.withUnsafeBytes(of: uint16.littleEndian) { bytes in
+            self[index] = bytes[0]
+            self[index + 1] = bytes[1]
+        }
+    }
+}
+
+func streamDeckClassicKeyImageBytes(from url: URL) -> [UInt8]? {
     guard
-        let source = CGImageSourceCreateWithURL(iconURL as CFURL, nil),
+        let source = CGImageSourceCreateWithURL(url as CFURL, nil),
         let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
     else {
         return nil
     }
-    return streamDeckJPEGData(from: image)
-}
 
-func streamDeckJPEGData(from image: CGImage) -> Data? {
     let bounds = CGRect(x: 0, y: 0, width: 72, height: 72)
-    guard let context = makeStreamDeckImageContext(bounds: bounds) else {
-        return nil
-    }
-
-    context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
-    context.fill(bounds)
-    context.translateBy(x: bounds.width, y: bounds.height)
-    context.rotate(by: .pi)
-    context.draw(image, in: bounds)
-
-    guard let rotatedImage = context.makeImage() else {
-        return nil
-    }
-    return jpegData(from: rotatedImage)
-}
-
-func makeStreamDeckImageContext(bounds: CGRect) -> CGContext? {
     guard
         let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
         let context = CGContext(
@@ -566,10 +187,17 @@ func makeStreamDeckImageContext(bounds: CGRect) -> CGContext? {
     else {
         return nil
     }
-    return context
-}
 
-func jpegData(from image: CGImage) -> Data? {
+    context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+    context.fill(bounds)
+    context.translateBy(x: bounds.width, y: bounds.height)
+    context.rotate(by: .pi)
+    context.draw(image, in: bounds)
+
+    guard let rotatedImage = context.makeImage() else {
+        return nil
+    }
+
     let data = NSMutableData()
     guard
         let destination = CGImageDestinationCreateWithData(
@@ -581,113 +209,266 @@ func jpegData(from image: CGImage) -> Data? {
     else {
         return nil
     }
+
     CGImageDestinationAddImage(
-        destination, image,
+        destination,
+        rotatedImage,
         [
             kCGImageDestinationLossyCompressionQuality: 0.8,
             kCGImagePropertyJFIFIsProgressive: false,
-        ] as CFDictionary)
+        ] as CFDictionary
+    )
+
     guard CGImageDestinationFinalize(destination) else {
         return nil
     }
-    return data as Data
+
+    return [UInt8](data as Data)
 }
 
-func shortcutEntriesByKeyLabel(in text: String) -> [String: ShortcutListEntry] {
-    let pattern = #"(?m)^((F(?:[1-9]|1[0-5]))(?: .*)?) \(([0-9A-Fa-f-]{36})\)$"#
-    guard let expression = try? NSRegularExpression(pattern: pattern) else {
-        return [:]
-    }
-
-    var entriesByKeyLabel: [String: ShortcutListEntry] = [:]
-    let range = NSRange(text.startIndex..<text.endIndex, in: text)
-    for match in expression.matches(in: text, range: range) {
-        guard
-            let nameRange = Range(match.range(at: 1), in: text),
-            let keyLabelRange = Range(match.range(at: 2), in: text),
-            let identifierRange = Range(match.range(at: 3), in: text)
-        else {
-            continue
-        }
-        let keyLabel = String(text[keyLabelRange])
-        if entriesByKeyLabel[keyLabel] == nil {
-            entriesByKeyLabel[keyLabel] = ShortcutListEntry(
-                keyLabel: keyLabel,
-                name: String(text[nameRange]),
-                identifier: String(text[identifierRange])
-            )
-        } else {
-            fputs("Ignoring duplicate Shortcut for \(keyLabel)\n", stderr)
-        }
-    }
-    return entriesByKeyLabel
-}
-
-final class FunctionKeyModeState: @unchecked Sendable {
-    private let actions: [FunctionKeyAction]
-    private let shortcutRunner: ShortcutRunner
-    private let synthesizer: KeyboardSynthesizer
-    private var previousStates = [Bool](repeating: false, count: keyCount)
-
-    init(
-        actions: [FunctionKeyAction], shortcutRunner: ShortcutRunner,
-        synthesizer: KeyboardSynthesizer
+class BaseDeviceHandler {
+    func onReport(
+        _ result: IOReturn,
+        _ sender: IOHIDDevice,
+        _ type: IOHIDReportType,
+        _ reportID: UInt32,
+        _ report: UnsafeBufferPointer<UInt8>
     ) {
-        self.actions = actions
-        self.shortcutRunner = shortcutRunner
-        self.synthesizer = synthesizer
-    }
-
-    func handle(_ states: [Bool]) {
-        let normalizedStates = normalize(states)
-        for index in functionKeys.indices where normalizedStates[index] != previousStates[index] {
-            let functionKey = functionKeys[index]
-            let isDown = normalizedStates[index]
-            fputs("\(functionKey.label) \(isDown ? "down" : "up")\n", stderr)
-            handle(action: actions[index], isDown: isDown)
-        }
-        previousStates = normalizedStates
-    }
-
-    func releaseAll() {
-        for index in functionKeys.indices where previousStates[index] {
-            let functionKey = functionKeys[index]
-            fputs("\(functionKey.label) up\n", stderr)
-            if case .keyboard(let keyCode) = actions[index] {
-                synthesizer.post(keyCode: keyCode, isDown: false)
-            }
-        }
-        previousStates = [Bool](repeating: false, count: keyCount)
-    }
-
-    private func handle(action: FunctionKeyAction, isDown: Bool) {
-        switch action {
-        case .shortcut(_, let identifier):
-            if isDown {
-                shortcutRunner.run(identifier: identifier)
-            }
-        case .keyboard(let keyCode):
-            synthesizer.post(keyCode: keyCode, isDown: isDown)
-        }
-    }
-
-    private func normalize(_ states: [Bool]) -> [Bool] {
-        var normalizedStates = [Bool](repeating: false, count: keyCount)
-        for index in 0..<min(states.count, normalizedStates.count) {
-            normalizedStates[index] = states[index]
-        }
-        return normalizedStates
     }
 }
 
-func intProperty(_ device: IOHIDDevice, _ key: String) -> Int? {
-    guard let value = IOHIDDeviceGetProperty(device, key as CFString) else {
-        return nil
+class StreamDeckHandler: BaseDeviceHandler {
+    let deviceModel: BaseStreamDeckModel
+    let keyShortcuts: [ShortcutRunner]
+    
+    var previousPressState: [Bool]
+
+    init(deviceModel: BaseStreamDeckModel, keyShortcuts: [ShortcutRunner]) {
+        previousPressState = [Bool](repeating: false, count: deviceModel.columns * deviceModel.rows)
+        self.deviceModel = deviceModel
+        self.keyShortcuts = keyShortcuts
     }
-    return value as? Int
+    
+    func setupKeyShortcuts() {
+    }
+    
+    func uploadKeyImages(device: IOHIDDevice) {
+    }
+    
+    func onPressStateChanged(index: Int, isDown: Bool) {
+    }
+
+    override func onReport(
+        _ result: IOReturn,
+        _ sender: IOHIDDevice,
+        _ type: IOHIDReportType,
+        _ reportID: UInt32,
+        _ report: UnsafeBufferPointer<UInt8>
+    ) {
+        guard result == kIOReturnSuccess else { return }
+
+        if type == kIOHIDReportTypeInput && reportID == 0x01 {
+            if let pressState = deviceModel.parsePressStateChangeReport(report: report) {
+                let changes = pressState.indices.filter {
+                    pressState[$0] != previousPressState[$0]
+                }
+                previousPressState = pressState
+
+                for index in changes {
+                    onPressStateChanged(index: index, isDown: pressState[index])
+                }
+            }
+        }
+    }
 }
 
-func writeUInt16LE(_ value: UInt16, into bytes: inout [UInt8], at offset: Int) {
-    bytes[offset] = UInt8(value & 0x00FF)
-    bytes[offset + 1] = UInt8((value >> 8) & 0x00FF)
+class StreamDeckClassicHandler: StreamDeckHandler {
+    let keys: [KeyCode] = [.f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10, .f11, .f12, .f13, .f14, .f15]
+
+    let keyNameMapping: [String: KeyCode] = [
+        "F1": .f1,
+        "F2": .f2,
+        "F3": .f3,
+        "F4": .f4,
+        "F5": .f5,
+        "F6": .f6,
+        "F7": .f7,
+        "F8": .f8,
+        "F9": .f9,
+        "F10": .f10,
+        "F11": .f11,
+        "F12": .f12,
+        "F13": .f13,
+        "F14": .f14,
+        "F15": .f15,
+    ]
+    
+    var keyImages: [KeyCode: [UInt8]] = [
+        .f1: PackageResources.f1_rot180_jpg,
+        .f2: PackageResources.f2_rot180_jpg,
+        .f3: PackageResources.f3_rot180_jpg,
+        .f4: PackageResources.f4_rot180_jpg,
+        .f5: PackageResources.f5_rot180_jpg,
+        .f6: PackageResources.f6_rot180_jpg,
+        .f7: PackageResources.f7_rot180_jpg,
+        .f8: PackageResources.f8_rot180_jpg,
+        .f9: PackageResources.f9_rot180_jpg,
+        .f10: PackageResources.f10_rot180_jpg,
+        .f11: PackageResources.f11_rot180_jpg,
+        .f12: PackageResources.f12_rot180_jpg,
+        .f13: PackageResources.f13_rot180_jpg,
+        .f14: PackageResources.f14_rot180_jpg,
+        .f15: PackageResources.f15_rot180_jpg,
+    ]
+    
+    override func setupKeyShortcuts() {
+        for (keyName, keyCode) in keyNameMapping {
+            guard let shortcut = keyShortcuts.first(where: { $0.key == keyName }) else {
+                continue
+            }
+
+            print("Key Shortcut found: \(shortcut.name)")
+            
+            let pngURL = kDataDir.appending(path: "ShortcutIcons/\(shortcut.name).png", directoryHint: .notDirectory)
+
+            guard let data = streamDeckClassicKeyImageBytes(from: pngURL) else {
+                writeError("WARNING: Failed to load Shortcut icon for \(shortcut.name)\n")
+                continue
+            }
+
+            keyImages[keyCode] = data
+        }
+    }
+    
+    override func uploadKeyImages(device: IOHIDDevice) {
+        let reportSize = 1024
+        let report = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: reportSize)
+        let maxChunkSize = 1016
+        for (keyIndex, keyCode) in keys.enumerated() {
+            guard let keyImageBytes = keyImages[keyCode] else {
+                writeError("WARNING: Key image of \(keyIndex) is missing")
+                continue
+            }
+
+            for (chunkIndex, byteOffset) in stride(from: 0, to: keyImageBytes.count, by: maxChunkSize).enumerated() {
+                let end = min(byteOffset + maxChunkSize, keyImageBytes.count)
+                let chunk = keyImageBytes[byteOffset..<end]
+
+                report.initialize(repeating: 0)
+
+                report[0] = 0x02 // Report ID
+                report[1] = 0x07 // Command
+                report[2] = UInt8(keyIndex) // Key Index
+                report[3] = end == keyImageBytes.count ? 0x01 : 0x00 // Transfer is Done flag
+                report.storeLE(uint16: UInt16(chunk.count), at: 4)
+                report.storeLE(uint16: UInt16(chunkIndex), at: 6)
+                for (offset, byte) in chunk.enumerated() {
+                    report[8 + offset] = byte
+                }
+                
+                guard deviceModel.writeOutputReport(
+                    device: device,
+                    reportID: 0x02,
+                    report: UnsafeBufferPointer<UInt8>(report)
+                ) == kIOReturnSuccess else {
+                    writeError("WARNING: Updating key image of \(keyIndex) was failed")
+                    continue
+                }
+            }
+        }
+    }
+    
+    override func onPressStateChanged(index: Int, isDown: Bool) {
+        let functionKeyIndex = index + 1
+        if isDown {
+            print("F\(functionKeyIndex) down")
+        } else {
+            print("F\(functionKeyIndex) up")
+            
+            let shortcut = keyShortcuts.first { $0.key == "F\(functionKeyIndex)" }
+            if let shortcut {
+                print("Invoked \(shortcut.name)")
+                shortcut.runAndForget()
+            }
+        }
+    }
+}
+
+func hidReportCallback(
+    _ context: UnsafeMutableRawPointer?,
+    _ result: IOReturn,
+    _ sender: UnsafeMutableRawPointer?,
+    _ type: IOHIDReportType,
+    _ reportID: UInt32,
+    _ report: UnsafeMutablePointer<UInt8>,
+    _ reportLength: CFIndex
+) {
+    switch type {
+    case kIOHIDReportTypeCount, kIOHIDReportTypeFeature, kIOHIDReportTypeInput,
+        kIOHIDReportTypeOutput:
+        guard let context, let sender else { return }
+        Unmanaged<BaseDeviceHandler>.fromOpaque(context).takeUnretainedValue().onReport(
+            result,
+            Unmanaged<IOHIDDevice>.fromOpaque(sender).takeUnretainedValue(),
+            type,
+            reportID,
+            UnsafeBufferPointer<UInt8>(start: report, count: Int(reportLength))
+        )
+    default: return
+    }
+}
+
+guard let runLoop = CFRunLoopGetCurrent() else {
+    writeError("ERROR: Failed to start program. Exiting...")
+    exit(1)
+}
+
+let sigintSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+let sigtermSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+sigintSource.setEventHandler { CFRunLoopStop(runLoop) }
+sigtermSource.setEventHandler { CFRunLoopStop(runLoop) }
+
+let extractIconShortcut = ShortcutRunner(name: kExtractIconShortcutName)
+_ = extractIconShortcut.runAndWait()
+
+let keyShortcuts = ShortcutRunner.listKeyShortcuts(in: shortcutFolder)
+
+if let deviceModel = deviceModel as? BaseStreamDeckModel {
+    let inputReportSize = 512
+    let inputReport = UnsafeMutablePointer<UInt8>.allocate(capacity: inputReportSize)
+
+    let handler =
+        switch deviceModel {
+        case let deviceModel as StreamDeckClassicModel:
+            StreamDeckClassicHandler(deviceModel: deviceModel, keyShortcuts: keyShortcuts)
+        default:
+            StreamDeckHandler(deviceModel: deviceModel, keyShortcuts: keyShortcuts)
+        }
+    
+    handler.setupKeyShortcuts()
+    handler.uploadKeyImages(device: device)
+
+    IOHIDDeviceRegisterInputReportCallback(
+        device,
+        inputReport,
+        inputReportSize,
+        hidReportCallback,
+        Unmanaged.passUnretained(handler).toOpaque()
+    )
+
+    IOHIDDeviceScheduleWithRunLoop(device, runLoop, CFRunLoopMode.defaultMode.rawValue)
+
+    signal(SIGINT, SIG_IGN)
+    signal(SIGTERM, SIG_IGN)
+    sigintSource.activate()
+    sigtermSource.activate()
+
+    CFRunLoopRun()
+
+    sigintSource.cancel()
+    sigtermSource.cancel()
+
+    IOHIDDeviceUnscheduleFromRunLoop(device, runLoop, CFRunLoopMode.defaultMode.rawValue)
+    
+    _ = deviceModel.showLogo(device: device)
 }

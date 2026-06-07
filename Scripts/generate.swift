@@ -4,11 +4,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //
-// Sources/LiveFunkeyDeckAssets/generate.swift
-// LiveFunkeyDeck
+//  Sources/LiveFunkeyDeckAssets/generate.swift
+//  LiveFunkeyDeck
 //
-// Version: 1.0.0
-// Date: 2026-06-06
+//  Version: 1.0.0
+//  Date: 2026-06-06
 //
 
 import CoreGraphics
@@ -45,7 +45,7 @@ func makeContext() -> CGContext {
 
 for index in 1...15 {
     let label = "F\(index)"
-    let fileURL = URL(fileURLWithPath: "\(outputDir)/f\(index).jpg", isDirectory: false)
+    let fileURL = URL(fileURLWithPath: "\(outputDir)/f\(index)_rot180.jpg", isDirectory: false)
 
     let context = makeContext()
 

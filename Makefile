@@ -5,7 +5,7 @@
 CONFIGURATION ?= release
 PREFIX ?= /usr/local
 
-PRODUCT := LiveFunkeyDeck
+PRODUCT := live-funkey-deck
 BUILT_PRODUCTS_DIR := .build/$(CONFIGURATION)
 BUILD_STAMP := $(BUILT_PRODUCTS_DIR)/.make_build
 CODESIGN_STAMP := $(BUILT_PRODUCTS_DIR)/.make_codesign
