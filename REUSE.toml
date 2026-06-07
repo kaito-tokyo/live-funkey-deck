@@ -2,5 +2,15 @@ version = 1
 
 [[annotations]]
 path = ".swift-format"
+SPDX-FileCopyrightText = ""
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = "Sources/LiveFunkeyDeck/Resources/*.jpg"
 SPDX-FileCopyrightText = "2026 Kaito Udagawa <umireon@kaito.tokyo>"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "Sources/LiveFunkeyDeck/Resources/font-license.txt"
+SPDX-FileCopyrightText = ""
 SPDX-License-Identifier = "CC0-1.0"

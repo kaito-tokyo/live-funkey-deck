@@ -8,9 +8,9 @@ import PackageDescription
 
 let package = Package(
     name: "LiveFunkeyDeck",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v15)],
     products: [
-        .executable(name: "LiveFunkeyDeck", targets: ["LiveFunkeyDeck"])
+        .executable(name: "live-funkey-deck", targets: ["LiveFunkeyDeck"])
     ],
     targets: [
         .executableTarget(
