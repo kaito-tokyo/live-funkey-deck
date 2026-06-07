@@ -21,8 +21,8 @@ private let kVersion = "0.1.0"
 private let kUsage = """
     live-funkey-deck: Small function key provider for Stream Deck
     Usage: live-funkey-deck
-      --shortcut-folder=NAME  Shortcut folder name to use. Default to live-funkey-deck.
-      --serial-number=STRING  Serial number to select device. Optional when single device connected.
+      --shortcut-folder=NAME  Shortcut folder name to use. Defaults to live-funkey-deck.
+      --serial-number=STRING  Serial number to select device. Optional when a single device is connected.
     """
 
 private let kDataDir = URL.applicationSupportDirectory.appending(
