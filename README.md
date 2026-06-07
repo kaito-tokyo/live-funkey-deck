@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Live Funkey Deck
 
-Live Funkey Deck is a small commandline-based utility for streamer key devices that can be run on Terminal. It is designed to be integrated deeply with macOS itself and let users control everything. It only depends on macOS's built-in things such as USB HID drivers and Shortcuts.app. What this utility does is to connect to your streamer key device and run the Shortcut you added to your macOS. Since all works related to streaming is done by Shortcuts, you need to be familiar with Shortcuts.app instead of learning this utility.
+Live Funkey Deck is a small command-line utility for streamer key devices. You can run it in Terminal on macOS. It integrates with macOS's Shortcuts.app seamlessly. The device can trigger user's own macOS Shortcuts as a simple launcher. Shortcuts.app is Apple's masterpiece to empower users by the visual programming, and this utility is designed to be a bridge between your device and it. I have attached some example workflows in [./Shortcuts](./Shortcuts). One is to control OBS via WebSocket.
 
 ## Installation
 
@@ -19,21 +19,21 @@ make
 sudo make install
 ```
 
-Install the shortcuts placed in [./Shortcuts](./Shortcuts) to your macOS. These are examples of how you can configure live-funkey-deck.
+Install the shortcuts in [./Shortcuts](./Shortcuts) into the Shortcuts.app on macOS. These are examples of how you can configure live-funkey-deck. F\* shortcuts MUST be installed under a folder named `live-funkey-deck`. You can change the folder name by `--shortcut-folder` option. This option is useful when you want profiles.
 
-- **tokyo.kaito.live-funkey-deck.extract-icons**: This is a live-funkey-deck's system shortcut. Its name MUST NOT be changed but you can freely change its content if you understand how it works. This is needed to show your icons on the device.
-- **F1 Scene Screenshot**: This is my example workflow to take a screenshot I use usually. The part of `F1` represents what key on your device triggers this shortcut. You can change the part of `Scene Screenshot`. The key and the name MUST be separated by a single space.
+- **tokyo.kaito.live-funkey-deck.extract-icons**: This is a system shortcut used by live-funkey-deck. Its name MUST NOT be changed, but you can change its content if you understand how it works. This is needed to show your icons on the device.
+- **F1 Scene Screenshot**: This is an example workflow to take a screenshot on OBS. The `F1` part indicates which key on your device triggers this shortcut. You can change `Scene Screenshot` freely. The key and the name MUST be separated by a single space.
 
 ## Usage
 
-Start Terminal on your macOS and run `live-funkey-deck`.
+Open Terminal on macOS and run `live-funkey-deck`.
 
 ```zsh
 umireon@umireon-macbook-pro live-funkey-deck % live-funkey-deck --help
 live-funkey-deck: Small function key provider for Stream Deck
 Usage: live-funkey-deck
-  --shortcut-folder=NAME  Shortcut folder name to use. Default to live-funkey-deck.
-  --serial-number=STRING  Serial number to select device. Optional when single device connected.
+  --shortcut-folder=NAME  Shortcut folder name to use. Defaults to live-funkey-deck.
+  --serial-number=STRING  Serial number to select device. Optional when a single device is connected.
 ```
 
 ```zsh
