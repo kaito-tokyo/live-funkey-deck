@@ -99,16 +99,16 @@ extension BaseStreamDeckModel {
 
         return String(decoding: report[2..<2 + dataLength], as: UTF8.self)
     }
-    
+
     func showLogo(device: IOHIDDevice) -> IOReturn {
-        let reportID = 0x03 // Setter Feature
-        
+        let reportID = 0x03  // Setter Feature
+
         let reportSize = 32
         let report = UnsafeMutablePointer<UInt8>.allocate(capacity: reportSize)
-        
+
         report[0] = UInt8(reportID)
-        report[1] = 0x02 // Show Logo
-        
+        report[1] = 0x02  // Show Logo
+
         return IOHIDDeviceSetReport(device, kIOHIDReportTypeFeature, reportID, report, reportSize)
     }
 }

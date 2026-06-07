@@ -16,13 +16,13 @@ struct ShortcutRunner {
     let name: String
     let identifier: String?
     let key: String?
-    
+
     init(name: String, identifier: String? = nil, key: String? = nil) {
         self.name = name
         self.identifier = identifier
         self.key = key
     }
-    
+
     func runAndWait() -> Result<Void, any Error> {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
@@ -58,12 +58,16 @@ struct ShortcutRunner {
             else {
                 return []
             }
-            return output.split(separator: "\n", omittingEmptySubsequences: true).compactMap { line -> ShortcutRunner? in
+            return output.split(separator: "\n", omittingEmptySubsequences: true).compactMap {
+                line -> ShortcutRunner? in
                 print(line)
-                guard let m = String(line).wholeMatch(of: /(([0-9A-Za-z]+)(?: .*)?) \(([-0-9A-Za-z]+)\)/) else {
+                guard
+                    let m = String(line).wholeMatch(
+                        of: /(([0-9A-Za-z]+)(?: .*)?) \(([-0-9A-Za-z]+)\)/)
+                else {
                     return nil
                 }
-                
+
                 return ShortcutRunner(
                     name: String(m.output.1),
                     identifier: String(m.output.3),

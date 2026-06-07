@@ -240,7 +240,7 @@ class BaseDeviceHandler {
 class StreamDeckHandler: BaseDeviceHandler {
     let deviceModel: BaseStreamDeckModel
     let keyShortcuts: [ShortcutRunner]
-    
+
     var previousPressState: [Bool]
 
     init(deviceModel: BaseStreamDeckModel, keyShortcuts: [ShortcutRunner]) {
@@ -248,13 +248,13 @@ class StreamDeckHandler: BaseDeviceHandler {
         self.deviceModel = deviceModel
         self.keyShortcuts = keyShortcuts
     }
-    
+
     func setupKeyShortcuts() {
     }
-    
+
     func uploadKeyImages(device: IOHIDDevice) {
     }
-    
+
     func onPressStateChanged(index: Int, isDown: Bool) {
     }
 
@@ -283,7 +283,9 @@ class StreamDeckHandler: BaseDeviceHandler {
 }
 
 class StreamDeckClassicHandler: StreamDeckHandler {
-    let keys: [KeyCode] = [.f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10, .f11, .f12, .f13, .f14, .f15]
+    let keys: [KeyCode] = [
+        .f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10, .f11, .f12, .f13, .f14, .f15,
+    ]
 
     let keyNameMapping: [String: KeyCode] = [
         "F1": .f1,
@@ -302,7 +304,7 @@ class StreamDeckClassicHandler: StreamDeckHandler {
         "F14": .f14,
         "F15": .f15,
     ]
-    
+
     var keyImages: [KeyCode: [UInt8]] = [
         .f1: PackageResources.f1_rot180_jpg,
         .f2: PackageResources.f2_rot180_jpg,
@@ -320,7 +322,7 @@ class StreamDeckClassicHandler: StreamDeckHandler {
         .f14: PackageResources.f14_rot180_jpg,
         .f15: PackageResources.f15_rot180_jpg,
     ]
-    
+
     override func setupKeyShortcuts() {
         for (keyName, keyCode) in keyNameMapping {
             guard let shortcut = keyShortcuts.first(where: { $0.key == keyName }) else {
@@ -328,8 +330,9 @@ class StreamDeckClassicHandler: StreamDeckHandler {
             }
 
             print("Key Shortcut found: \(shortcut.name)")
-            
-            let pngURL = kDataDir.appending(path: "ShortcutIcons/\(shortcut.name).png", directoryHint: .notDirectory)
+
+            let pngURL = kDataDir.appending(
+                path: "ShortcutIcons/\(shortcut.name).png", directoryHint: .notDirectory)
 
             guard let data = streamDeckClassicKeyImageBytes(from: pngURL) else {
                 writeError("WARNING: Failed to load Shortcut icon for \(shortcut.name)\n")
@@ -339,7 +342,7 @@ class StreamDeckClassicHandler: StreamDeckHandler {
             keyImages[keyCode] = data
         }
     }
-    
+
     override func uploadKeyImages(device: IOHIDDevice) {
         let reportSize = 1024
         let report = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: reportSize)
@@ -350,41 +353,45 @@ class StreamDeckClassicHandler: StreamDeckHandler {
                 continue
             }
 
-            for (chunkIndex, byteOffset) in stride(from: 0, to: keyImageBytes.count, by: maxChunkSize).enumerated() {
+            for (chunkIndex, byteOffset) in stride(
+                from: 0, to: keyImageBytes.count, by: maxChunkSize
+            ).enumerated() {
                 let end = min(byteOffset + maxChunkSize, keyImageBytes.count)
                 let chunk = keyImageBytes[byteOffset..<end]
 
                 report.initialize(repeating: 0)
 
-                report[0] = 0x02 // Report ID
-                report[1] = 0x07 // Command
-                report[2] = UInt8(keyIndex) // Key Index
-                report[3] = end == keyImageBytes.count ? 0x01 : 0x00 // Transfer is Done flag
+                report[0] = 0x02  // Report ID
+                report[1] = 0x07  // Command
+                report[2] = UInt8(keyIndex)  // Key Index
+                report[3] = end == keyImageBytes.count ? 0x01 : 0x00  // Transfer is Done flag
                 report.storeLE(uint16: UInt16(chunk.count), at: 4)
                 report.storeLE(uint16: UInt16(chunkIndex), at: 6)
                 for (offset, byte) in chunk.enumerated() {
                     report[8 + offset] = byte
                 }
-                
-                guard deviceModel.writeOutputReport(
-                    device: device,
-                    reportID: 0x02,
-                    report: UnsafeBufferPointer<UInt8>(report)
-                ) == kIOReturnSuccess else {
+
+                guard
+                    deviceModel.writeOutputReport(
+                        device: device,
+                        reportID: 0x02,
+                        report: UnsafeBufferPointer<UInt8>(report)
+                    ) == kIOReturnSuccess
+                else {
                     writeError("WARNING: Updating key image of \(keyIndex) was failed")
                     continue
                 }
             }
         }
     }
-    
+
     override func onPressStateChanged(index: Int, isDown: Bool) {
         let functionKeyIndex = index + 1
         if isDown {
             print("F\(functionKeyIndex) down")
         } else {
             print("F\(functionKeyIndex) up")
-            
+
             let shortcut = keyShortcuts.first { $0.key == "F\(functionKeyIndex)" }
             if let shortcut {
                 print("Invoked \(shortcut.name)")
@@ -444,7 +451,7 @@ if let deviceModel = deviceModel as? BaseStreamDeckModel {
         default:
             StreamDeckHandler(deviceModel: deviceModel, keyShortcuts: keyShortcuts)
         }
-    
+
     handler.setupKeyShortcuts()
     handler.uploadKeyImages(device: device)
 
@@ -469,6 +476,6 @@ if let deviceModel = deviceModel as? BaseStreamDeckModel {
     sigtermSource.cancel()
 
     IOHIDDeviceUnscheduleFromRunLoop(device, runLoop, CFRunLoopMode.defaultMode.rawValue)
-    
+
     _ = deviceModel.showLogo(device: device)
 }
