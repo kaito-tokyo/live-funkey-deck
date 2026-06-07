@@ -60,7 +60,6 @@ struct ShortcutRunner {
             }
             return output.split(separator: "\n", omittingEmptySubsequences: true).compactMap {
                 line -> ShortcutRunner? in
-                print(line)
                 guard
                     let m = String(line).wholeMatch(
                         of: /(([0-9A-Za-z]+)(?: .*)?) \(([-0-9A-Za-z]+)\)/)
