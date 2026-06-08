@@ -1,14 +1,14 @@
-#!/usr/bin/env swift  // SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
-//
-// SPDX-License-Identifier: Apache-2.0
-
-//
-//  Sources/LiveFunkeyDeckAssets/generate.swift
-//  LiveFunkeyDeck
-//
-//  Version: 1.0.0
-//  Date: 2026-06-06
-//
+#!/usr/bin/env swift
+/// SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
+///
+/// SPDX-License-Identifier: Apache-2.0
+///
+/// Scripts/generate.swift
+/// LiveFunkeyDeck
+///
+/// Version: 1.0.0
+/// Date: 2026-06-06
+///
 
 import CoreGraphics
 import CoreText
@@ -101,18 +101,4 @@ for index in 1...15 {
     }
 
     print("Generated: \(fileURL.path(percentEncoded: false))")
-}
-
-let unknownLicenseText = """
-    Embedded font license is unknown.
-
-    """.data(using: .utf8)
-
-let licenseURL = URL(fileURLWithPath: "Scripts/font-licenses/\(actualFontName).txt")
-let fontLicenseURL = URL(fileURLWithPath: "\(outputDir)/font-license.txt")
-
-if FileManager.default.fileExists(atPath: licenseURL.path(percentEncoded: false)) {
-    try? FileManager.default.copyItem(at: licenseURL, to: fontLicenseURL)
-} else {
-    try? unknownLicenseText?.write(to: fontLicenseURL)
 }

@@ -1,45 +1,45 @@
-// SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
-//
-// SPDX-License-Identifier: Apache-2.0
+/// SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
+///
+/// SPDX-License-Identifier: Apache-2.0
+///
+/// Sources/LiveFunkeyDeck/DeviceModel.swift
+/// LiveFunkeyDeck
+///
+/// Version: 1.0.0
+/// Date: 2026-06-08
+///
 
-//
-//  Sources/LiveFunkeyDeck/DeviceModel.swift
-//  LiveFunkeyDeck
-//
-//  Version: 1.0.0
-//  Date: 2026-06-07
-//
+struct DeviceID: Hashable {
+    let vendorID: UInt16
+    let productID: UInt16
+}
 
 protocol DeviceModel {
-    var name: String { get }
-    var vendorID: Int { get }
-    var productID: Int { get }
+    var deviceID: DeviceID { get }
 }
 
 protocol BaseStreamDeckModel: DeviceModel {
     var columns: Int { get }
     var rows: Int { get }
+    var keyCount: Int { get }
 }
 
 struct StreamDeckClassicModel: BaseStreamDeckModel {
-    let name: String
-    let vendorID: Int = 0x0FD9
-    let productID: Int
+    let deviceID: DeviceID
     let columns: Int
     let rows: Int
+    let width: Int
+    let height: Int
+
+    var keyCount: Int { columns * rows }
 }
 
-enum DeviceRegistry {
+extension StreamDeckClassicModel {
     static let streamDeckMk2 = StreamDeckClassicModel(
-        name: "Stream Deck Mk.2",
-        productID: 0x0080,
+        deviceID: DeviceID(vendorID: 0x0FD9, productID: 0x0080),
         columns: 5,
-        rows: 3
+        rows: 3,
+        width: 72,
+        height: 72
     )
-
-    static var knownModels: [any DeviceModel] {
-        [
-            streamDeckMk2
-        ]
-    }
 }
