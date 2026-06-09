@@ -11,6 +11,12 @@ SPDX-FileCopyrightText = "2026 Kaito Udagawa <umireon@kaito.tokyo>"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
-path = "Sources/LiveFunkeyDeck/Resources/font-license.txt"
+path = [
+  "NOTICE",
+  "OFL.txt",
+  "Sources/*/Resources/LICENSE",
+  "Sources/*/Resources/NOTICE",
+  "Sources/*/Resources/OFL.txt"
+]
 SPDX-FileCopyrightText = ""
 SPDX-License-Identifier = "CC0-1.0"

@@ -14,3 +14,14 @@ indent_size = 2
 
 [*.md]
 trim_trailing_whitespace = false
+indent_style = unset
+indent_size = unset
+tab_width = 8
+
+[Makefile]
+indent_style = tab
+indent_size = tab
+tab_width = 8
+
+[**/*.swift]
+indent_size = 4
