@@ -16,7 +16,7 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-let outputDir = "Sources/LiveFunkeyDeck/Resources"
+let outputDir = "src/Resources"
 let bounds = CGRect(x: 0, y: 0, width: 72, height: 72)
 let fgColor = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
 let bgColor = CGColor(red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0)

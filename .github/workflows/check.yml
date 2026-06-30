@@ -34,7 +34,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
@@ -53,27 +53,6 @@ jobs:
         shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
         run: reuse lint
 
-  check-swift-format:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          persist-credentials: false
-
-      - name: Print swift-format version
-        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
-        run: |
-          swift format --version
-
-      - name: Check with swift-format
-        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
-        run: |
-          swift format lint --recursive . --strict
-
   check-yamllint:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -81,7 +60,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
@@ -99,7 +78,6 @@ jobs:
     name: Accept Check CI
     needs:
       - check-reuse
-      - check-swift-format
       - check-yamllint
     runs-on: ubuntu-slim
     permissions: {}
