@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run live-funkey-deck",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/live-funkey-deck",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "cmake build",
+      "terminal": "integrated"
+    }
+  ]
+}

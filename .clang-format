@@ -2,5 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-.DS_Store
-/build/
+BasedOnStyle: LLVM
+Standard: c++20
+ColumnLimit: 120
+InsertNewlineAtEOF: true

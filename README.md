@@ -10,13 +10,14 @@ Live Funkey Deck is a small command-line utility for streamer key devices. You c
 
 ## Installation
 
-Prerequisites: Xcode
+Prerequisites: Xcode 26 or later and CMake
 
 ```
 git clone https://github.com/kaito-tokyo/live-funkey-deck.git
 cd live-funkey-deck
-make
-sudo make install
+cmake -S . -B build -G "Ninja Multi-Config"
+cmake --build build --config Release
+sudo cmake --install build --config Release
 ```
 
 Install the shortcuts in [./Shortcuts](./Shortcuts) into the Shortcuts.app on macOS. These are examples of how you can configure live-funkey-deck. All shortcuts used by this utility MUST be installed under a folder named `live-funkey-deck`. You can change the folder name by `--shortcut-folder` option. This option is useful when you want profiles.
